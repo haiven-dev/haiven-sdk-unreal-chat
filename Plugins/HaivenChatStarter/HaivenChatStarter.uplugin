@@ -1,0 +1,25 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1.0",
+	"FriendlyName": "Haiven Chat Starter",
+	"Description": "Source-only chat UI and sample integration for the Haiven Unreal plugin.",
+	"Category": "Haiven",
+	"CreatedBy": "Haiven",
+	"CanContainContent": true,
+	"IsBetaVersion": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "HaivenChatStarter",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "Haiven",
+			"Enabled": true
+		}
+	]
+}
