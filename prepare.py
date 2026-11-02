@@ -5,13 +5,24 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SDK = HERE.parents[1]
-MATRIX = json.loads((SDK / "sdks/unreal/ci/engines.json").read_text())
 BUILD_ARTIFACTS = ("Binaries", "Intermediate", "Saved", "DerivedDataCache")
+
+
+def unreal_root() -> Path:
+    """Sibling haiven-sdk-unreal, or HAIVEN_SDK_UNREAL when that value is non-empty."""
+    configured = os.environ.get("HAIVEN_SDK_UNREAL")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (HERE.parent / "haiven-sdk-unreal").resolve()
+
+
+UNREAL = unreal_root()
+MATRIX = json.loads((UNREAL / "ci/engines.json").read_text())
 
 
 def engine(version: str) -> dict[str, object]:
@@ -23,13 +34,24 @@ def engine(version: str) -> dict[str, object]:
     raise SystemExit(f"unsupported Unreal version {version}; choose {known}")
 
 
+def _ignore(directory: str, names: list[str], *, skip_plugin: bool) -> set[str]:
+    ignored = set(shutil.ignore_patterns(*BUILD_ARTIFACTS)(directory, names))
+    # ignore_patterns matches the entry name, so "Plugins/Haiven" never matches.
+    if skip_plugin and Path(directory).name == "Plugins":
+        ignored.update(name for name in names if name == "Haiven")
+    return ignored
+
+
 def assemble(destination: Path, version: str) -> Path:
     destination = destination.resolve()
     if destination.exists():
         raise SystemExit(f"destination already exists: {destination}")
-    ignore = shutil.ignore_patterns(*BUILD_ARTIFACTS, "Plugins/Haiven")
-    shutil.copytree(HERE, destination, ignore=ignore)
-    shutil.copytree(SDK / "sdks/unreal/Haiven", destination / "Plugins/Haiven", ignore=ignore)
+    shutil.copytree(HERE, destination, ignore=lambda directory, names: _ignore(directory, names, skip_plugin=True))
+    shutil.copytree(
+        UNREAL / "Haiven",
+        destination / "Plugins/Haiven",
+        ignore=lambda directory, names: _ignore(directory, names, skip_plugin=False),
+    )
     descriptor = destination / "HaivenChatStarter.uproject"
     project = json.loads(descriptor.read_text())
     project["EngineAssociation"] = engine(version)["association"]
