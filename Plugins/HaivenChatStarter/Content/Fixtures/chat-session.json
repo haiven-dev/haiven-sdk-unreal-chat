@@ -1,0 +1,30 @@
+{
+	"message": {
+		"authorId": "user-7",
+		"author": {
+			"id": "user-7",
+			"username": "mina",
+			"displayName": "Mina",
+			"profileImageUrl": "https://example.test/mina.png",
+			"avatarFrame": "avatar-frame/default"
+		},
+		"channelId": "general",
+		"id": "message-42",
+		"clientMessageId": "remote-client-42",
+		"content": "hello from the fixture",
+		"createdAt": "2026-10-09T12:00:00Z"
+	},
+	"typing": {
+		"channelId": "general",
+		"userId": "user-7",
+		"isTyping": true
+	},
+	"outbox": [
+		{"state": "sending", "expected": "you (sending): fixture send"},
+		{"state": "unconfirmed", "expected": "you (waiting to resend): fixture send"},
+		{"state": "accepted", "expected": "you: fixture send"},
+		{"state": "held", "moderationState": "review_pending", "expected": "you (held: review_pending): fixture send"},
+		{"state": "removed", "moderationState": "blocked", "expected": "you (not shown: blocked): fixture send"},
+		{"state": "refused", "error": "content_refused", "expected": "you (refused: content_refused): fixture send"}
+	]
+}
