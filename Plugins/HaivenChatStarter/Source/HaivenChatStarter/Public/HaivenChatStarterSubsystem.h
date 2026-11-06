@@ -34,6 +34,7 @@ private:
 
 	void ApplyDemoCredential(const FString& Token, FDateTime ExpiresAtUtc);
 	void Note(const FText& Text) const;
+	void NoteError(const FText& Text) const;
 	void HandleConnectComplete(bool bSucceeded, const FString& Error);
 
 	UFUNCTION()
