@@ -131,7 +131,7 @@ namespace Haiven
 	}
 
 	/**
-	 * Subscriber-reward claims (HAVN-1179), engine-free: the C++ counterpart of
+	 * Subscriber-reward claims, engine-free: the C++ counterpart of
 	 * the .NET and JavaScript SDKs' reward clients, and the core the Unreal
 	 * plugin's Claim Reward node drives.
 	 *

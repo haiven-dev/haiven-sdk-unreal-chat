@@ -82,8 +82,7 @@ struct HAIVEN_API FHaivenRewardClaimOutcome
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FHaivenRewardClaimed, const FHaivenRewardClaimOutcome&, Outcome);
 
 /**
- * The engine-side half of the plugin's subscriber-reward claims (HAVN-1179 /
- * HAVN-1180): owns the C++ SDK's Haiven::FRewardClaims, which keeps the claim
+ * The engine-side half of the plugin's subscriber-reward claims : owns the C++ SDK's Haiven::FRewardClaims, which keeps the claim
  * id of every unanswered claim so a retry is the same claim to the service,
  * and presents its outcomes in Blueprint types. UHaivenSubsystem owns one; it
  * is public so a game (and the automation tests) can drive one over its own
