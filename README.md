@@ -20,8 +20,8 @@ sample can be reviewed and merged as text.
 | Unreal Engine 5.8.2 | `unreal-5.8.2-clang20` | Plugin, starter, fixture, and panel automation |
 | Unreal Engine 5.6.1 | `unreal-5.6.1-clang18` | Plugin, starter, fixture, and panel automation |
 
-`prepare.py` knows these versions and copies the plugin from `Plugins/Haiven`,
-or from `HAIVEN_SDK_UNREAL/Haiven` when that variable is set.
+`prepare.py` knows these versions and copies `Plugins/Haiven` from this
+repository. `HAIVEN_SDK_UNREAL` does not replace that plugin.
 
 ## Install and run
 
