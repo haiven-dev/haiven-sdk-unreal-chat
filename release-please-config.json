@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-v-in-tag": true,
+  "include-component-in-tag": false,
+  "bump-minor-pre-major": true,
+  "bump-patch-for-minor-pre-major": true,
+  "bootstrap-sha": "d238a1641bc0934ad242025f118b940f4b84760c",
+  "draft": false,
+  "prerelease": false,
+  "packages": {
+    ".": {
+      "package-name": "haiven-sdk-unreal-chat",
+      "initial-version": "0.0.1",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}
