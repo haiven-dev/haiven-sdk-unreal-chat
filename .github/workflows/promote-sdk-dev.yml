@@ -10,6 +10,10 @@ name: promote sdk-dev
 # The pull request head is a disposable branch named for that sdk-dev SHA.
 # delete_branch_on_merge may delete that head. This workflow never merges and
 # never deletes or resets sdk-dev.
+#
+# The generated body is a squash override. release-please uses it in place of
+# the one squash commit, so merge commits and rebases do not match it. Publish
+# only when the repository allows squash and rejects the other two methods.
 on:
   workflow_dispatch:
     inputs:
@@ -47,6 +51,7 @@ jobs:
         id: promotion
         env:
           EXPECTED_SDK_DEV_SHA: ${{ inputs.expected_sdk_dev_sha }}
+          GH_TOKEN: ${{ steps.promotion-token.outputs.token }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin \
@@ -64,6 +69,19 @@ jobs:
             exit 1
           fi
 
+          # Ruleset 13688652 lists merge, squash, and rebase. Repository
+          # settings can still leave only squash. A squash is the only method
+          # whose one commit this override replaces. A merge commit makes
+          # release-please list the commits twice, and a rebase is not that
+          # one commit.
+          merge_settings="$(gh api "repos/${GITHUB_REPOSITORY}" \
+            --jq '"merge=\(.allow_merge_commit) squash=\(.allow_squash_merge) rebase=\(.allow_rebase_merge)"')"
+          if [[ "$merge_settings" != "merge=false squash=true rebase=false" ]]; then
+            echo "squash-style BEGIN_COMMIT_OVERRIDE requires squash-only merges onto main; repository settings are ${merge_settings}" >&2
+            echo "ruleset 13688652 lists merge, squash, and rebase. A repository admin has to disable merge commits and rebase merges before this workflow can publish." >&2
+            exit 1
+          fi
+
           commit_count="$(git rev-list --count origin/main..origin/sdk-dev)"
           if [[ "$commit_count" == 0 ]]; then
             echo "sdk-dev has no commits to promote" >&2
@@ -78,6 +96,14 @@ jobs:
             echo "- main at dispatch: \`$main_sha\`"
             echo "- commits in promotion range: $commit_count"
             echo "- promotion head: \`$promotion_branch\` (deleted on merge; sdk-dev is not)"
+            echo "- merge method: squash this pull request"
+            echo
+            echo "Squash-merge this pull request. release-please replaces that one squash"
+            echo "commit with the BEGIN_COMMIT_OVERRIDE block below, so each nested commit"
+            echo "keeps its body, including a breaking-change footer or Release-As footer."
+            echo "Do not use a merge commit: release-please would read the merged commits"
+            echo "and this override, and the changelog would list them twice. Do not rebase:"
+            echo "a rebase does not land as the one commit the override replaces."
             echo
             echo "The release-please workflow runs on main after this PR merges. It opens"
             echo "the separately reviewed version/changelog PR; merging that PR publishes"
@@ -85,7 +111,7 @@ jobs:
             echo
             echo "BEGIN_COMMIT_OVERRIDE"
             git log --reverse \
-              --format='BEGIN_NESTED_COMMIT%n%s%nEND_NESTED_COMMIT' \
+              --format='BEGIN_NESTED_COMMIT%n%B%nEND_NESTED_COMMIT' \
               origin/main..origin/sdk-dev
             echo "END_COMMIT_OVERRIDE"
             echo
