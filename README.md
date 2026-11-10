@@ -57,9 +57,8 @@ python3 test_prepare.py
 ```
 
 `.github/workflows/build.yml` runs that test on pull requests and on a `v*` tag.
-It checks out `haiven-sdk-unreal` at the commit named in the workflow. The
-plugin repository's own `python3 ci/run.py` is the editor build; it is not in
-this tree.
+The plugin repository's own `python3 ci/run.py` is the editor build; it is not
+in this tree.
 
 `Haiven.ChatStarter.Fixture` parses checked-in `chat.message` and `chat.typing`
 payloads into the generated typed contracts and covers every outbox result,
