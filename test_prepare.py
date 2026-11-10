@@ -26,6 +26,19 @@ class PrepareTest(unittest.TestCase):
                     (project / "Plugins/HaivenChatStarter/HaivenChatStarter.uplugin").is_file()
                 )
                 self.assertFalse((project / "Plugins/Haiven/Binaries").exists())
+                # HaivenChatStarter includes these. The pinned SDK checkout does not have them.
+                for relative in (
+                    "Source/Haiven/Public/HaivenChat.h",
+                    "Source/Haiven/Public/Blueprint/HaivenBlueprintTypes.h",
+                    "Source/Haiven/Public/Blueprint/HaivenBlueprintRealtime.h",
+                    "Source/Haiven/Public/Blueprint/HaivenBlueprintContracts.h",
+                    "Source/ThirdParty/HaivenCpp/include/HaivenFrames.h",
+                ):
+                    copied = project / "Plugins/Haiven" / relative
+                    self.assertTrue(copied.is_file(), relative)
+                    self.assertEqual(
+                        copied.read_bytes(), (HERE / "Plugins/Haiven" / relative).read_bytes()
+                    )
 
     def test_refuses_unknown_engine(self) -> None:
         with tempfile.TemporaryDirectory() as temporary, self.assertRaises(SystemExit):
