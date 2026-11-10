@@ -13,6 +13,17 @@ The project contains no binary assets and no credential. It runs the engine's
 built-in Entry map under `AHaivenChatStarterGameMode`, so every part of the
 sample can be reviewed and merged as text.
 
+## Source release
+
+`VersionName` in `Plugins/HaivenChatStarter/HaivenChatStarter.uplugin` is the
+release version. A `v*` tag that matches it (`v` plus that version) publishes
+`haiven-unreal-chat-source-<version>.zip` and `SHA256SUMS`. The archive's
+top-level folder is `HaivenChatStarter/` and contains this project
+(`HaivenChatStarter.uproject`, `Config/`, `Plugins/`, and this README) with
+`Binaries`, `Intermediate`, `Saved`, and `DerivedDataCache` removed. It is
+source only: no cooked game, no Fab package, and no Epic content. Open
+`HaivenChatStarter.uproject` in the engine named by its `EngineAssociation`.
+
 ## Supported engines
 
 | Engine | CI runner | Status |
