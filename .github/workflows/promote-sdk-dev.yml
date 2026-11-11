@@ -8,9 +8,10 @@ name: promote sdk-dev
 # approval. The expected SHA makes each dispatch an exact, reviewable action.
 #
 # The pull request head is a disposable branch named for that sdk-dev SHA.
-# delete_branch_on_merge may delete that head. A later dispatch closes every
-# other open promote/sdk-dev-* pull request so a stale head cannot merge.
-# This workflow never merges and never deletes or resets sdk-dev.
+# This workflow does not delete that head while delete_branch_on_merge is off.
+# A later dispatch closes every other open promote/sdk-dev-* pull request so a
+# stale head cannot merge. This workflow never merges and never deletes or
+# resets sdk-dev.
 #
 # The generated body is a squash override. release-please uses it in place of
 # the one squash commit, so merge commits and rebases do not match it. Publish
@@ -100,7 +101,7 @@ jobs:
             echo "- sdk-dev: \`$sdk_dev_sha\`"
             echo "- main at dispatch: \`$main_sha\`"
             echo "- commits in promotion range: $commit_count"
-            echo "- promotion head: \`$promotion_branch\` (deleted on merge; sdk-dev is not)"
+            echo "- promotion head: \`$promotion_branch\` (this workflow does not delete the promotion head while delete_branch_on_merge is off; sdk-dev is not)"
             echo "- merge method: squash this pull request"
             echo
             echo "Squash-merge this pull request. release-please replaces that one squash"
