@@ -92,6 +92,29 @@ class SourceZipTests(unittest.TestCase):
                 any(name.endswith((".uasset", ".umap", ".exe", ".so", ".dll", ".pyc")) for name in names)
             )
 
+    def test_shipped_readme_uses_the_archive_layout(self):
+        readme = (release.REPO / "README.md").read_text()
+        self.assertIn("EngineAssociation", readme)
+        self.assertIn("Unreal Editor 5.8", readme)
+        self.assertIn("HaivenChatStarter.uproject", readme)
+        self.assertIn("Config/DefaultGame.ini", readme)
+        self.assertIn("HAIVEN_DEMO_ACCESS_TOKEN", readme)
+        self.assertIn("Haiven.ChatStarter", readme)
+        for absent in (
+            "prepare.py",
+            "demos/unreal-chat-starter",
+            "sdks/unreal",
+            "engines.json",
+            "unreal-editor",
+            "/tmp/haiven-chat-starter",
+        ):
+            self.assertNotIn(absent, readme)
+        with tempfile.TemporaryDirectory() as directory:
+            archive = release.source("0.1.0", directory)
+            with zipfile.ZipFile(archive) as bundle:
+                shipped = bundle.read("HaivenChatStarter/README.md").decode()
+            self.assertEqual(shipped, readme)
+
     def test_source_refuses_a_version_that_does_not_match(self):
         with tempfile.TemporaryDirectory() as directory, self.assertRaises(RuntimeError):
             release.source("9.9.9", directory)

@@ -39,7 +39,17 @@ From the repository root, without an Unreal install:
 python3 test_prepare.py
 ```
 
-That test reads the engine list from a sibling checkout of the public
-`haiven-sdk-unreal` repository, or from `HAIVEN_SDK_UNREAL` when that
-variable is set. `prepare.py --dest <directory>` assembles a working
-project. Its default engine is the primary version in that list.
+`prepare.py --dest <directory>` assembles a working project with the
+`Plugins/Haiven` copy in this repository. Its engine versions are listed in
+`prepare.py`, and the default is 5.8.2.
+
+`.github/workflows/build.yml` runs that test on pull requests and on a `v*`
+tag. The plugin repository's own `python3 ci/run.py` is the editor build; it
+is not in this tree.
+
+The release packagers have their own tests, which also need no Unreal
+install:
+
+```sh
+python3 -m unittest discover -s ci -p 'test_*.py'
+```
