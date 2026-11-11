@@ -20,9 +20,8 @@ sample can be reviewed and merged as text.
 | Unreal Engine 5.8.2 | `unreal-5.8.2-clang20` | Plugin, starter, fixture, and panel automation |
 | Unreal Engine 5.6.1 | `unreal-5.6.1-clang18` | Plugin, starter, fixture, and panel automation |
 
-These are the exact versions in `sdks/unreal/ci/engines.json`. The existing
-`unreal-editor` workflow builds a clean host with both the Haiven and starter
-plugins and runs `Haiven.ChatStarter.*` on both matrix rows.
+`prepare.py` reads those versions from a sibling `haiven-sdk-unreal` checkout,
+or from `HAIVEN_SDK_UNREAL` when that variable is set (`ci/engines.json`).
 
 ## Install and run
 
@@ -30,7 +29,7 @@ From the repository root, assemble a disposable project for an installed
 supported engine:
 
 ```sh
-python3 demos/unreal-chat-starter/prepare.py \
+python3 prepare.py \
   --engine 5.8.2 \
   --dest /tmp/haiven-chat-starter
 ```
@@ -51,21 +50,17 @@ reconnect-resilient SDK outbox. Never put the access token in `DefaultGame.ini`.
 
 ## Verification
 
-Without Unreal installed:
+Without Unreal installed, point `HAIVEN_SDK_UNREAL` at a `haiven-sdk-unreal`
+checkout when it is not the sibling directory, then:
 
 ```sh
-python3 demos/unreal-chat-starter/test_prepare.py
-python3 sdks/unreal/ci/test_reports.py
-node sdks/unreal/validate-plugin.mjs
+python3 test_prepare.py
 ```
 
-With either matrix engine installed, run the same clean staging and automation
-used by CI:
-
-```sh
-python3 sdks/unreal/ci/run.py 5.8.2
-python3 sdks/unreal/ci/run.py 5.6.1
-```
+`.github/workflows/build.yml` runs that test on pull requests and on a `v*` tag.
+It checks out `haiven-sdk-unreal` at the commit named in the workflow. The
+plugin repository's own `python3 ci/run.py` is the editor build; it is not in
+this tree.
 
 `Haiven.ChatStarter.Fixture` parses checked-in `chat.message` and `chat.typing`
 payloads into the generated typed contracts and covers every outbox result,
