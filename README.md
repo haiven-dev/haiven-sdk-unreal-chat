@@ -1,7 +1,7 @@
 # Unreal chat starter
 
 A minimal, source-only Unreal project that exercises the public Haiven plugin
-surface introduced in [PR #83](https://github.com/haiven-dev/haiven-sdk/pull/83).
+surface introduced in PR #83.
 The code-built UMG panel connects through `UHaivenSubsystem`, consumes typed
 `UHaivenRealtimeEvents` message and typing delegates, and calls
 `SendChatMessage`. One line follows each outgoing message through `sending`,
