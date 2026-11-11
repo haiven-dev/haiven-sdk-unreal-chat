@@ -1,0 +1,178 @@
+name: Release binaries
+
+# Prebuilt Haiven and HaivenChatStarter plugins for a v* tag. The source
+# archive is a different workflow; this file does not build that zip.
+#
+# Linux only. Unreal compiles Win64 on Windows and Mac on macOS, and the
+# runners registered for this repository are the Linux engine labels in
+# ci/engines.json. Those other hosts are not jobs, so a tag push cannot sit
+# in the queue waiting for a machine that does not exist.
+#
+# No cooked game and no Fab package. Editor output is the shared libraries in
+# Binaries/Linux. Game targets are monolithic: UBT -plugin= writes each
+# module's .precompiled manifest and object files, and does not link UnrealGame.
+# The vendored Haiven plugin stays at VersionName 0.0.0. The tag must be v plus
+# HaivenChatStarter's VersionName. This file does not create tags.
+#
+# SECURITY: this repository is public and the binary jobs run on self-hosted
+# runners. Never add a pull_request or pull_request_target trigger here.
+# Only people with write access can push a tag or dispatch a workflow, so
+# fork code never reaches a self-hosted runner through this file.
+#
+# The concurrency group is shared with the source-release workflow so the
+# two publishers do not create the GitHub release at the same time.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build (e.g. v0.1.0). Empty = dry run of the selected branch at its VersionName."
+        required: false
+        default: ""
+      publish:
+        description: "Create or update the GitHub release (requires tag)."
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+env:
+  # The tag being released, or empty for a dispatched dry run.
+  RELEASE_TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+  # What every job checks out: the dispatched tag, or the ref that triggered the run.
+  RELEASE_REF: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
+
+jobs:
+  gate:
+    name: Version and matrix
+    if: github.repository == 'haiven-dev/haiven-sdk-unreal-chat'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_REF }}
+          persist-credentials: false
+      - name: Check the tag against HaivenChatStarter.uplugin VersionName
+        id: version
+        env:
+          PUBLISH: ${{ github.event_name == 'push' || inputs.publish }}
+        run: |
+          set -euo pipefail
+          if [ "$PUBLISH" = "true" ] && [ -z "$RELEASE_TAG" ]; then
+            echo "::error::publishing needs a tag; dispatch with the tag input set"
+            exit 1
+          fi
+          if [ -n "$RELEASE_TAG" ]; then
+            version="$(python3 ci/binary_release.py version --tag "$RELEASE_TAG")"
+          else
+            version="$(python3 ci/binary_release.py version)"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Release version $version (tag: ${RELEASE_TAG:-none, dry run})"
+      - name: Binary script tests
+        run: python3 -m unittest discover -s ci -p 'test_binary_release.py' -v
+      - name: Linux matrix from ci/engines.json
+        id: matrix
+        run: |
+          set -euo pipefail
+          matrix="$(python3 ci/binary_release.py matrix)"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "$matrix"
+
+  binaries:
+    name: Unreal ${{ matrix.version }} ${{ matrix.platform }} binaries
+    needs: gate
+    if: github.repository == 'haiven-dev/haiven-sdk-unreal-chat' && needs.gate.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.gate.outputs.matrix) }}
+    runs-on: [self-hosted, linux, x64, "${{ matrix.label }}"]
+    timeout-minutes: 360
+    env:
+      UNREAL_ENGINE_ROOT: ${{ matrix.root }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_REF }}
+          persist-credentials: false
+          clean: true
+      - name: Compile plugins for ${{ matrix.platform }}
+        env:
+          ENGINE: ${{ matrix.version }}
+          PLATFORM: ${{ matrix.platform }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          rm -rf dist build/release-logs
+          python3 ci/binary_release.py binary --engine "$ENGINE" --version "$VERSION" --platform "$PLATFORM" --out dist --logs build/release-logs
+          python3 -m zipfile -l dist/*.zip
+      - name: Preserve UBT logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ubt-logs-UE${{ matrix.ue }}-${{ matrix.platform }}
+          path: build/release-logs/
+          if-no-files-found: warn
+          retention-days: 14
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-binaries-UE${{ matrix.ue }}-${{ matrix.platform }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish binary assets
+    needs: [gate, binaries]
+    if: github.repository == 'haiven-dev/haiven-sdk-unreal-chat' && needs.binaries.result == 'success' && (github.event_name == 'push' || inputs.publish)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-binaries-*
+          path: dist
+          merge-multiple: true
+      - name: Upload the binary zips
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.gate.outputs.version }}
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          # Not SHA256SUMS: the source-release workflow uploads that name, and --clobber would replace it.
+          sha256sum -- *.zip > SHA256SUMS-binaries
+          cat SHA256SUMS-binaries
+          prerelease=()
+          case "$VERSION" in
+            *-*) prerelease=(--prerelease) ;;
+          esac
+          for _attempt in 1 2 3 4 5 6; do
+            if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+              gh release upload "$RELEASE_TAG" ./*.zip ./SHA256SUMS-binaries --clobber
+              gh release view "$RELEASE_TAG" --json assets -q '.assets[].name'
+              exit 0
+            fi
+            if gh release create "$RELEASE_TAG" ./*.zip ./SHA256SUMS-binaries \
+              --verify-tag --title "Haiven Unreal chat starter $VERSION" --generate-notes "${prerelease[@]}"; then
+              gh release view "$RELEASE_TAG" --json assets -q '.assets[].name'
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "::error::could not create or update release $RELEASE_TAG"
+          exit 1

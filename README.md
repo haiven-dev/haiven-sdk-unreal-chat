@@ -68,3 +68,27 @@ including reconnect and refusal diagnostics. `Haiven.ChatStarter.Panel` proves
 the source-built UI exposes Message Input, Send Chat Message, Reconnect, and a
 keyed outbox log. `Haiven.ChatStarter.Settings` proves incomplete connection
 configuration is rejected.
+
+## Binary release
+
+`.github/workflows/release-binaries.yml` compiles the vendored Haiven plugin
+and HaivenChatStarter for each engine in `ci/engines.json`. It does not cook a
+game and it does not build a Fab package. The source archive, when that
+workflow is on the release branch, stays a separate job.
+
+The editor build ships `Binaries/Linux/libUnrealEditor-*.so`. Game Development
+and Shipping are monolithic, so the workflow compiles each plugin with UBT
+`-plugin=` and ships `<Module>.precompiled` plus the object files it lists. It
+does not link an UnrealGame executable. Checksums are `SHA256SUMS-binaries`,
+leaving the source archive's `SHA256SUMS` in place.
+
+The tag must be `v` plus `VersionName` in
+`Plugins/HaivenChatStarter/HaivenChatStarter.uplugin`. The vendored
+`Plugins/Haiven/Haiven.uplugin` stays at `0.0.0`. A dispatch without `publish`
+uploads the workflow artifact only.
+
+Each asset is `haiven-unreal-chat-<version>-UE<major.minor>-Linux.zip`. Unzip
+it over the source tree. The packaged plugins are `Installed` and stamped with
+`EngineVersion` `<major>.<minor>.0`, so they load in the engine that built
+them. Linux is the only host: Unreal compiles Win64 on Windows and Mac on
+macOS, and this repository does not run those jobs.
