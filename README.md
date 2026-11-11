@@ -73,3 +73,11 @@ including reconnect and refusal diagnostics. `Haiven.ChatStarter.Panel` proves
 the source-built UI exposes Message Input, Send Chat Message, Reconnect, and a
 keyed outbox log. `Haiven.ChatStarter.Settings` proves incomplete connection
 configuration is rejected.
+
+## Haiven versioning
+
+haiven-sdk and haiven-sdk-unreal follow semver. A feature of the Unreal target ships in the shared major.minor release, in parity with the other target SDKs. A patch of haiven-sdk-unreal is a fix and can ship on its own.
+
+This demo, haiven-sdk-unreal-chat, publishes that same major.minor and does not follow semver. A feature that shows part of the platform in this chat starter can be introduced in a patch. That patch leaves haiven-sdk and haiven-sdk-unreal unchanged.
+
+The proposal is [haiven-docs ADR 0051](https://github.com/haiven-dev/haiven-docs/blob/docs/adr-0051-major-minor-lockstep/decisions/0051-major-minor-lockstep.md).
