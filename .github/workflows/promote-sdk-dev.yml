@@ -13,9 +13,9 @@ name: promote sdk-dev
 # stale head cannot merge. This workflow never merges and never deletes or
 # resets sdk-dev.
 #
-# The generated body is a squash override. release-please uses it in place of
-# the one squash commit, so merge commits and rebases do not match it. Publish
-# only when the repository allows squash and rejects the other two methods.
+# The generated body follows the haiven-docs main/dev standard: merge the
+# promotion with a merge commit, and list only commits that release-please
+# would otherwise skip. The release-day-check workflow verifies that list.
 on:
   workflow_dispatch:
     inputs:
@@ -75,16 +75,10 @@ jobs:
             exit 1
           fi
 
-          # Ruleset 13688652 lists merge, squash, and rebase. Repository
-          # settings can still leave only squash. A squash is the only method
-          # whose one commit this override replaces. A merge commit makes
-          # release-please list the commits twice, and a rebase is not that
-          # one commit.
-          merge_settings="$(gh api "repos/${GITHUB_REPOSITORY}" \
-            --jq '"merge=\(.allow_merge_commit) squash=\(.allow_squash_merge) rebase=\(.allow_rebase_merge)"')"
-          if [[ "$merge_settings" != "merge=false squash=true rebase=false" ]]; then
-            echo "squash-style BEGIN_COMMIT_OVERRIDE requires squash-only merges onto main; repository settings are ${merge_settings}" >&2
-            echo "ruleset 13688652 lists merge, squash, and rebase. A repository admin has to disable merge commits and rebase merges before this workflow can publish." >&2
+          merge_commits_enabled="$(gh api "repos/${GITHUB_REPOSITORY}" \
+            --jq '.allow_merge_commit')"
+          if [[ "$merge_commits_enabled" != "true" ]]; then
+            echo "sdk-dev promotions must use a merge commit, but merge commits are disabled" >&2
             exit 1
           fi
 
@@ -95,6 +89,8 @@ jobs:
           fi
 
           promotion_branch="promote/sdk-dev-${sdk_dev_sha}"
+          missed_commits="$(.github/scripts/release-override-list.sh \
+            origin/main origin/sdk-dev 'v*')"
           {
             echo "Promotes the exact reviewed sdk-dev head into main."
             echo
@@ -102,42 +98,29 @@ jobs:
             echo "- main at dispatch: \`$main_sha\`"
             echo "- commits in promotion range: $commit_count"
             echo "- promotion head: \`$promotion_branch\` (this workflow does not delete the promotion head while delete_branch_on_merge is off; sdk-dev is not)"
-            echo "- merge method: squash this pull request"
+            echo "- merge method: merge commit"
             echo
-            echo "Squash-merge this pull request. release-please replaces that one squash"
-            echo "commit with the BEGIN_COMMIT_OVERRIDE block below. Each nested commit"
-            echo "keeps its subject and any breaking-change or Release-As line. The rest"
-            echo "of the body is omitted so the override stays under GitHub's limit."
-            echo "Do not use a merge commit: release-please would read the merged commits"
-            echo "and this override, and the changelog would list them twice. Do not rebase:"
-            echo "a rebase does not land as the one commit the override replaces."
+            echo "Merge this pull request with a merge commit, never a squash or rebase, as"
+            echo "required by the Haiven contribution standard:"
+            echo "https://github.com/haiven-dev/haiven-docs/blob/main/standards/contributing.md#main-and-dev"
             echo
             echo "The release-please workflow runs on main after this PR merges. It opens"
             echo "the separately reviewed version/changelog PR; merging that PR publishes"
             echo "the tag and GitHub release."
             echo
-            echo "BEGIN_COMMIT_OVERRIDE"
-            # Raw %B does not fit the pull request body limit. git trailers
-            # drop "BREAKING CHANGE" because of the space, so keep the
-            # subject and any breaking or Release-As line ourselves.
-            commit_shas="$(git rev-list --reverse origin/main..origin/sdk-dev)"
-            while IFS= read -r commit_sha; do
-              [[ -z "$commit_sha" ]] && continue
-              subject="$(git log -1 --format='%s' "$commit_sha")"
-              commit_body="$(git log -1 --format='%b' "$commit_sha")"
-              footers="$(printf '%s\n' "$commit_body" | grep -E '^(BREAKING CHANGE:|BREAKING-CHANGE:|Release-As:)' || true)"
-              echo "BEGIN_NESTED_COMMIT"
-              printf '%s\n' "$subject"
-              if [[ -n "$footers" ]]; then
-                echo
-                printf '%s\n' "$footers"
-              fi
-              echo "END_NESTED_COMMIT"
-            done <<< "$commit_shas"
-            echo "END_COMMIT_OVERRIDE"
+            if [[ -n "$missed_commits" ]]; then
+              echo "release-please would otherwise skip these older commits:"
+              echo
+              echo "BEGIN_COMMIT_OVERRIDE"
+              printf '%s\n' "$missed_commits"
+              echo "END_COMMIT_OVERRIDE"
+            else
+              echo "release-please reads every commit in this merge, so this body has no"
+              echo "BEGIN_COMMIT_OVERRIDE block. Adding one would list commits twice."
+            fi
             echo
-            echo "After the release PR merges, reset sdk-dev to main with a force-with-lease"
-            echo "guarded by \`$sdk_dev_sha\`, as documented in CONTRIBUTING.md."
+            echo "After the release PR merges, open main back into sdk-dev and merge it with"
+            echo "a merge commit. Do not rebase or force-reset sdk-dev."
           } > "$RUNNER_TEMP/sdk-dev-promotion.md"
 
           body_bytes="$(wc -c < "$RUNNER_TEMP/sdk-dev-promotion.md" | tr -d '[:space:]')"
@@ -274,5 +257,5 @@ jobs:
             echo
             echo "This workflow never merges. It publishes only the disposable promotion"
             echo "ref and never deletes or resets sdk-dev. Main protection owns review"
-            echo "and merge; the post-release sdk-dev reset remains guarded and explicit."
+            echo "and merge; the post-release main-to-sdk-dev back-merge remains explicit."
           } >> "$GITHUB_STEP_SUMMARY"

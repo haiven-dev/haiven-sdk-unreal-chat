@@ -1,0 +1,66 @@
+name: Release Day Check
+
+# release-please reads main newest-first by commit date and stops at the latest
+# release. A promotion can therefore carry older commits that it never reads.
+# This check requires the generated promotion body to list exactly those
+# commits, and rejects an override when release-please can read every commit.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  override:
+    name: Verify commits release-please would skip
+    if: startsWith(github.head_ref, 'promote/sdk-dev-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Check the override block
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          if [[ "$HEAD_REF" != "promote/sdk-dev-${HEAD_SHA}" ]]; then
+            echo "promotion ref ${HEAD_REF} is not pinned to ${HEAD_SHA}" >&2
+            exit 1
+          fi
+
+          missed="$(.github/scripts/release-override-list.sh \
+            origin/main "$HEAD_SHA" 'v*')"
+          begin_count="$(grep -c '^BEGIN_COMMIT_OVERRIDE$' <<< "${PR_BODY:-}" || true)"
+          end_count="$(grep -c '^END_COMMIT_OVERRIDE$' <<< "${PR_BODY:-}" || true)"
+          listed="$(printf '%s\n' "${PR_BODY:-}" |
+            tr -d '\r' |
+            sed -n '/^BEGIN_COMMIT_OVERRIDE$/,/^END_COMMIT_OVERRIDE$/p' |
+            sed '/COMMIT_OVERRIDE/d; /^[[:space:]]*$/d' |
+            sort -u)"
+
+          if [[ -z "$missed" ]]; then
+            if (( begin_count == 0 && end_count == 0 )); then
+              echo "release-please reads every commit in this merge."
+              exit 0
+            fi
+            echo "Remove the override block: it would list commits twice." >&2
+            exit 1
+          fi
+
+          if (( begin_count != 1 || end_count != 1 )); then
+            echo "The promotion body must contain exactly one override block." >&2
+            exit 1
+          fi
+          if [[ "$listed" != "$missed" ]]; then
+            echo "Set the override block to exactly:" >&2
+            printf '\nBEGIN_COMMIT_OVERRIDE\n%s\nEND_COMMIT_OVERRIDE\n' "$missed" >&2
+            exit 1
+          fi
+          echo "The override block lists every commit release-please would skip."
