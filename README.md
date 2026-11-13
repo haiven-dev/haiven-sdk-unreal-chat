@@ -13,6 +13,17 @@ The project contains no binary assets and no credential. It runs the engine's
 built-in Entry map under `AHaivenChatStarterGameMode`, so every part of the
 sample can be reviewed and merged as text.
 
+## Source release
+
+`VersionName` in `Plugins/HaivenChatStarter/HaivenChatStarter.uplugin` is the
+release version. A `v*` tag that matches it (`v` plus that version) publishes
+`haiven-unreal-chat-source-<version>.zip` and `SHA256SUMS`. The archive's
+top-level folder is `HaivenChatStarter/` and contains this project
+(`HaivenChatStarter.uproject`, `Config/`, `Plugins/`, and this README) with
+`Binaries`, `Intermediate`, `Saved`, and `DerivedDataCache` removed. It is
+source only: no cooked game, no Fab package, and no Epic content. Open
+`HaivenChatStarter.uproject` in the engine named by its `EngineAssociation`.
+
 ## Supported engines
 
 | Engine | CI runner | Status |
@@ -20,28 +31,26 @@ sample can be reviewed and merged as text.
 | Unreal Engine 5.8.2 | `unreal-5.8.2-clang20` | Plugin, starter, fixture, and panel automation |
 | Unreal Engine 5.6.1 | `unreal-5.6.1-clang18` | Plugin, starter, fixture, and panel automation |
 
-`prepare.py` knows these versions and copies `Plugins/Haiven` from this
-repository. `HAIVEN_SDK_UNREAL` does not replace that plugin.
+`HaivenChatStarter.uproject` sets `EngineAssociation` to `5.8`. Open it in
+Unreal Editor 5.8. To open it in Unreal Editor 5.6, set `EngineAssociation` to
+`5.6` first.
 
 ## Install and run
 
-From the repository root, assemble a disposable project for an installed
-supported engine:
+Use the folder that contains this README and `HaivenChatStarter.uproject`.
+In the published zip that folder is `HaivenChatStarter/`. `Plugins/Haiven` is
+already in that folder.
 
-```sh
-python3 prepare.py \
-  --engine 5.8.2 \
-  --dest /tmp/haiven-chat-starter
-```
-
-Edit `/tmp/haiven-chat-starter/Config/DefaultGame.ini` and set `BaseUrl`,
-`RealtimeUrl`, `AppId`, and `ChannelId`. Obtain a short-lived demo access token
-through the environment's documented authentication flow and expose it only to
-the editor process:
+Open `HaivenChatStarter.uproject` in the Unreal Editor 5.8 named by
+`EngineAssociation`. Edit `Config/DefaultGame.ini` and set `BaseUrl`,
+`RealtimeUrl`, `AppId`, and `ChannelId` under
+`[/Script/HaivenChatStarter.HaivenChatStarterSettings]`. Obtain a short-lived
+demo access token through your environment's documented authentication flow
+and expose it only to the editor process:
 
 ```sh
 export HAIVEN_DEMO_ACCESS_TOKEN='...'
-/path/to/UnrealEditor /tmp/haiven-chat-starter/HaivenChatStarter.uproject
+/path/to/UnrealEditor HaivenChatStarter.uproject
 ```
 
 Press Play. The panel connects automatically; the Reconnect button starts a new
@@ -50,29 +59,28 @@ reconnect-resilient SDK outbox. Never put the access token in `DefaultGame.ini`.
 
 ## Verification
 
-The assembly tests need no Unreal install:
-
-```sh
-python3 test_prepare.py
-```
-
-`.github/workflows/build.yml` runs that test on pull requests and on a `v*` tag.
-The plugin repository's own `python3 ci/run.py` is the editor build; it is not
-in this tree.
+The source archive does not include a separate test runner. In that same 5.8
+editor, open Test Automation and run the `Haiven.ChatStarter` filter. These
+editor tests ship in the starter plugin. Fixture, Panel, and Settings do not
+contact a service.
 
 `Haiven.ChatStarter.Fixture` parses checked-in `chat.message` and `chat.typing`
-payloads into the generated typed contracts and covers every outbox result,
-including reconnect and refusal diagnostics. `Haiven.ChatStarter.Panel` proves
-the source-built UI exposes Message Input, Send Chat Message, Reconnect, and a
-keyed outbox log. `Haiven.ChatStarter.Settings` proves incomplete connection
-configuration is rejected.
+payloads into the generated typed contracts and covers every outbox result in
+`Content/Fixtures/chat-session.json` (`sending`, `unconfirmed`, `accepted`,
+`held`, `removed`, and `refused`), plus the offline reconnect prompt.
+`Haiven.ChatStarter.Panel` proves the source-built UI exposes Message Input,
+Send Chat Message, Reconnect, and a keyed outbox log.
+`Haiven.ChatStarter.Settings` proves incomplete connection configuration is
+rejected. `Haiven.ChatStarter.ReconnectRetainsOutbox` proves a second connect
+with the same demo bearer keeps an unconfirmed outbox entry. That test sets
+`HAIVEN_DEMO_ACCESS_TOKEN` itself and uses a closed loopback port.
 
 ## Binary release
 
 `.github/workflows/release-binaries.yml` compiles the vendored Haiven plugin
-and HaivenChatStarter for each engine in `ci/engines.json`. It does not cook a
-game and it does not build a Fab package. The source archive, when that
-workflow is on the release branch, stays a separate job.
+and HaivenChatStarter for each engine in the Supported engines table. It does
+not cook a game and it does not build a Fab package. The source archive is a
+separate workflow, `.github/workflows/release.yml`.
 
 The editor build ships `Binaries/Linux/libUnrealEditor-*.so`. Game Development
 and Shipping are monolithic, so the workflow compiles each plugin with UBT
