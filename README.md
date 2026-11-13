@@ -1,7 +1,7 @@
 # Unreal chat starter
 
 A minimal, source-only Unreal project that exercises the public Haiven plugin
-surface introduced in [PR #83](https://github.com/haiven-dev/haiven-sdk/pull/83).
+surface introduced in PR #83.
 The code-built UMG panel connects through `UHaivenSubsystem`, consumes typed
 `UHaivenRealtimeEvents` message and typing delegates, and calls
 `SendChatMessage`. One line follows each outgoing message through `sending`,
@@ -12,6 +12,24 @@ the panel rather than only in the Unreal log.
 The project contains no binary assets and no credential. It runs the engine's
 built-in Entry map under `AHaivenChatStarterGameMode`, so every part of the
 sample can be reviewed and merged as text.
+
+## Haiven versioning
+
+[haiven-sdk-unreal](https://github.com/haiven-dev/haiven-sdk-unreal) follows
+semver. A feature of the Unreal target ships in a shared major.minor release, in
+parity with the other target SDKs. A haiven-sdk-unreal patch is a fix and can
+ship on its own.
+
+The policy for this demo is to track the major.minor of haiven-sdk-unreal. The
+demo does not follow semver. A feature that shows part of the platform in this
+chat starter ships as a demo patch. A breaking change that only affects this
+demo also ships as a demo patch, not as a minor or major release. A demo patch
+leaves haiven-sdk-unreal unchanged.
+
+The demo version is `VersionName` in
+`Plugins/HaivenChatStarter/HaivenChatStarter.uplugin`, and it is set by hand.
+Nothing ties it to haiven-sdk-unreal, so apply this policy whenever you change
+it.
 
 ## Supported engines
 
@@ -73,11 +91,3 @@ including reconnect and refusal diagnostics. `Haiven.ChatStarter.Panel` proves
 the source-built UI exposes Message Input, Send Chat Message, Reconnect, and a
 keyed outbox log. `Haiven.ChatStarter.Settings` proves incomplete connection
 configuration is rejected.
-
-## Haiven versioning
-
-haiven-sdk and haiven-sdk-unreal follow semver. A feature of the Unreal target ships in the shared major.minor release, in parity with the other target SDKs. A patch of haiven-sdk-unreal is a fix and can ship on its own.
-
-This demo, haiven-sdk-unreal-chat, publishes that same major.minor and does not follow semver. A feature that shows part of the platform in this chat starter can be introduced in a patch. That patch leaves haiven-sdk and haiven-sdk-unreal unchanged.
-
-The proposal is [haiven-docs ADR 0051](https://github.com/haiven-dev/haiven-docs/blob/docs/adr-0051-major-minor-lockstep/decisions/0051-major-minor-lockstep.md).
