@@ -49,8 +49,10 @@ void UHaivenChatStarterSubsystem::Show(APlayerController* PlayerController)
 	if (!Panel) return;
 	Panel->AddToViewport(100);
 	Panel->SetAlignmentInViewport(FVector2D(0.5f, 0.5f));
+	// Do not call SetPositionInViewport here: it resets the slot's anchors to (0,0),
+	// which centres the panel on the viewport's top-left corner, mostly off-screen.
+	// Zero offsets with a point anchor auto-size the panel to its 640x420 SizeBox.
 	Panel->SetAnchorsInViewport(FAnchors(0.5f));
-	Panel->SetPositionInViewport(FVector2D::ZeroVector);
 	Panel->SetConnectionStatus(HaivenChatStarter::DescribeConnection(
 		Haiven ? Haiven->GetRealtimeState() : EHaivenRealtimeState::Disconnected));
 	FInputModeGameAndUI Mode;
@@ -65,19 +67,19 @@ void UHaivenChatStarterSubsystem::Connect()
 {
 	if (!Haiven)
 	{
-		Note(NSLOCTEXT("HaivenChatStarter", "NoSubsystem", "connection failed: Haiven subsystem is unavailable"));
+		NoteError(NSLOCTEXT("HaivenChatStarter", "NoSubsystem", "connection failed: Haiven subsystem is unavailable"));
 		return;
 	}
 	const UHaivenChatStarterSettings* Settings = GetDefault<UHaivenChatStarterSettings>();
 	if (!Settings->IsConfigured())
 	{
-		Note(NSLOCTEXT("HaivenChatStarter", "NotConfigured", "connection failed: configure BaseUrl, RealtimeUrl, AppId, and ChannelId"));
+		NoteError(NSLOCTEXT("HaivenChatStarter", "NotConfigured", "connection failed: configure BaseUrl, RealtimeUrl, AppId, and ChannelId"));
 		return;
 	}
 	const FString Token = FPlatformMisc::GetEnvironmentVariable(TEXT("HAIVEN_DEMO_ACCESS_TOKEN"));
 	if (Token.IsEmpty())
 	{
-		Note(NSLOCTEXT("HaivenChatStarter", "NoToken", "connection failed: HAIVEN_DEMO_ACCESS_TOKEN is not set"));
+		NoteError(NSLOCTEXT("HaivenChatStarter", "NoToken", "connection failed: HAIVEN_DEMO_ACCESS_TOKEN is not set"));
 		return;
 	}
 
@@ -114,14 +116,14 @@ void UHaivenChatStarterSubsystem::Send(const FString& Content)
 {
 	if (!Haiven)
 	{
-		Note(NSLOCTEXT("HaivenChatStarter", "SendNoSubsystem", "send failed: Haiven subsystem is unavailable"));
+		NoteError(NSLOCTEXT("HaivenChatStarter", "SendNoSubsystem", "send failed: Haiven subsystem is unavailable"));
 		return;
 	}
 	FHaivenOutgoingChatMessage Message;
 	FString Error;
 	if (!Haiven->SendChatMessage(ChannelId, Content, false, FString(), Message, Error))
 	{
-		Note(FText::Format(NSLOCTEXT("HaivenChatStarter", "SendFailed", "send failed: {0}"), FText::FromString(Error)));
+		NoteError(FText::Format(NSLOCTEXT("HaivenChatStarter", "SendFailed", "send failed: {0}"), FText::FromString(Error)));
 		return;
 	}
 	HandleOutgoingChat(Message);
@@ -131,7 +133,7 @@ void UHaivenChatStarterSubsystem::HandleConnectComplete(const bool bSucceeded, c
 {
 	if (!bSucceeded)
 	{
-		Note(FText::Format(NSLOCTEXT("HaivenChatStarter", "ConnectFailed", "connection refused: {0}"),
+		NoteError(FText::Format(NSLOCTEXT("HaivenChatStarter", "ConnectFailed", "connection refused: {0}"),
 			FText::FromString(Error.IsEmpty() ? TEXT("unknown error") : Error)));
 	}
 }
@@ -153,12 +155,12 @@ void UHaivenChatStarterSubsystem::HandleRealtimeState(const EHaivenRealtimeState
 
 void UHaivenChatStarterSubsystem::HandleRealtimeError(const FString& Error)
 {
-	Note(FText::Format(NSLOCTEXT("HaivenChatStarter", "SocketError", "realtime failure: {0}"), FText::FromString(Error)));
+	NoteError(FText::Format(NSLOCTEXT("HaivenChatStarter", "SocketError", "realtime failure: {0}"), FText::FromString(Error)));
 }
 
 void UHaivenChatStarterSubsystem::HandleRealtimeClosed(const int32 Code, const FString& Reason)
 {
-	Note(FText::Format(NSLOCTEXT("HaivenChatStarter", "SocketClosed", "disconnected ({0}): {1}; unconfirmed sends stay queued"),
+	NoteError(FText::Format(NSLOCTEXT("HaivenChatStarter", "SocketClosed", "disconnected ({0}): {1}; unconfirmed sends stay queued"),
 		FText::AsNumber(Code), FText::FromString(Reason)));
 }
 
@@ -185,4 +187,9 @@ void UHaivenChatStarterSubsystem::HandleOutgoingChat(const FHaivenOutgoingChatMe
 void UHaivenChatStarterSubsystem::Note(const FText& Text) const
 {
 	if (Panel) Panel->AddLine(Text);
+}
+
+void UHaivenChatStarterSubsystem::NoteError(const FText& Text) const
+{
+	if (Panel) Panel->AddErrorLine(Text);
 }

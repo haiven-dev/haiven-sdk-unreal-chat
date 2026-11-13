@@ -1,0 +1,27 @@
+name: CI
+
+# Release-packager tests. They do not publish a release and do not need an
+# engine. The release workflow itself stays tag and workflow_dispatch only.
+on:
+  pull_request:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  release-script:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Release script tests
+        run: python3 -m unittest discover -s ci -p 'test_release.py' -v
