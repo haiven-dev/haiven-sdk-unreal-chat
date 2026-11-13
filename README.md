@@ -13,6 +13,17 @@ The project contains no binary assets and no credential. It runs the engine's
 built-in Entry map under `AHaivenChatStarterGameMode`, so every part of the
 sample can be reviewed and merged as text.
 
+## Supported engines
+
+| Engine | CI runner | Status |
+|---|---|---|
+| Unreal Engine 5.8.2 | `unreal-5.8.2-clang20` | Plugin, starter, fixture, and panel automation |
+| Unreal Engine 5.6.1 | `unreal-5.6.1-clang18` | Plugin, starter, fixture, and panel automation |
+
+These are the exact versions in `sdks/unreal/ci/engines.json`. The existing
+`unreal-editor` workflow builds a clean host with both the Haiven and starter
+plugins and runs `Haiven.ChatStarter.*` on both matrix rows.
+
 ## Haiven versioning
 
 [haiven-sdk-unreal](https://github.com/haiven-dev/haiven-sdk-unreal) follows
@@ -30,17 +41,6 @@ The demo version is `VersionName` in
 `Plugins/HaivenChatStarter/HaivenChatStarter.uplugin`, and it is set by hand.
 Nothing ties it to haiven-sdk-unreal, so apply this policy whenever you change
 it.
-
-## Supported engines
-
-| Engine | CI runner | Status |
-|---|---|---|
-| Unreal Engine 5.8.2 | `unreal-5.8.2-clang20` | Plugin, starter, fixture, and panel automation |
-| Unreal Engine 5.6.1 | `unreal-5.6.1-clang18` | Plugin, starter, fixture, and panel automation |
-
-These are the exact versions in `sdks/unreal/ci/engines.json`. The existing
-`unreal-editor` workflow builds a clean host with both the Haiven and starter
-plugins and runs `Haiven.ChatStarter.*` on both matrix rows.
 
 ## Install and run
 
