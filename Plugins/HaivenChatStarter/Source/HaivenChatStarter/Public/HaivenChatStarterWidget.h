@@ -16,6 +16,8 @@ class HAIVENCHATSTARTER_API UHaivenChatStarterWidget : public UUserWidget
 public:
 	void SetConnectionStatus(const FText& Text);
 	void AddLine(const FText& Text);
+	/** A failure line, drawn in the theme's muted error colour. */
+	void AddErrorLine(const FText& Text);
 	void SetOutboxLine(const FString& ClientMessageId, const FText& Text);
 	bool ReconcileOutboxLine(const FString& ClientMessageId, const FText& Text);
 	void FocusInput();
@@ -33,7 +35,7 @@ private:
 	UFUNCTION()
 	void HandleTextCommitted(const FText& Text, ETextCommit::Type Method);
 
-	UTextBlock* MakeLine(const FText& Text);
+	UTextBlock* MakeLine(const FText& Text, bool bError = false);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> Status;

@@ -5,7 +5,9 @@
 
 #include <string>
 
-namespace
+// Named rather than anonymous: a unity build joins this file with the plugin's
+// others, and an anonymous helper of the same name there would collide.
+namespace HaivenIdentitySubsystemDetail
 {
 	std::string ToUtf8(const FString& Value)
 	{
@@ -17,19 +19,22 @@ namespace
 	{
 		return FString(UTF8_TO_TCHAR(Value.c_str()));
 	}
+}
 
+namespace
+{
 	FHaivenMotd ToUnreal(const Haiven::MotdV0& Value)
 	{
 		FHaivenMotd Result;
-		Result.Id = FromUtf8(Value.Id);
+		Result.Id = HaivenIdentitySubsystemDetail::FromUtf8(Value.Id);
 		Result.bHasTitle = Value.Title.has_value();
-		if (Value.Title) Result.Title = FromUtf8(*Value.Title);
-		Result.Body = FromUtf8(Value.Body);
+		if (Value.Title) Result.Title = HaivenIdentitySubsystemDetail::FromUtf8(*Value.Title);
+		Result.Body = HaivenIdentitySubsystemDetail::FromUtf8(Value.Body);
 		Result.bHasUrl = Value.Url.has_value();
-		if (Value.Url) Result.Url = FromUtf8(*Value.Url);
-		Result.StartsAt = FromUtf8(Value.StartsAt);
+		if (Value.Url) Result.Url = HaivenIdentitySubsystemDetail::FromUtf8(*Value.Url);
+		Result.StartsAt = HaivenIdentitySubsystemDetail::FromUtf8(Value.StartsAt);
 		Result.bHasEndsAt = Value.EndsAt.has_value();
-		if (Value.EndsAt) Result.EndsAt = FromUtf8(*Value.EndsAt);
+		if (Value.EndsAt) Result.EndsAt = HaivenIdentitySubsystemDetail::FromUtf8(*Value.EndsAt);
 		return Result;
 	}
 
@@ -41,8 +46,8 @@ namespace
 		for (const Haiven::FSignInIdentity& Identity : Value.Identities)
 		{
 			FHaivenSignInIdentity Converted;
-			Converted.Provider = FromUtf8(Identity.Provider);
-			Converted.Email = FromUtf8(Identity.Email);
+			Converted.Provider = HaivenIdentitySubsystemDetail::FromUtf8(Identity.Provider);
+			Converted.Email = HaivenIdentitySubsystemDetail::FromUtf8(Identity.Email);
 			Result.Identities.Add(MoveTemp(Converted));
 		}
 		return Result;
@@ -51,11 +56,11 @@ namespace
 	FHaivenRestRequest ToUnreal(const Haiven::Rest::FRestRequest& Value)
 	{
 		FHaivenRestRequest Result;
-		Result.Method = FromUtf8(Value.Method);
-		Result.Path = FromUtf8(Value.Path);
-		Result.Body = FromUtf8(Value.Body);
-		Result.ContentType = FromUtf8(Value.ContentType);
-		Result.ResponseSchema = FromUtf8(Value.ResponseSchema);
+		Result.Method = HaivenIdentitySubsystemDetail::FromUtf8(Value.Method);
+		Result.Path = HaivenIdentitySubsystemDetail::FromUtf8(Value.Path);
+		Result.Body = HaivenIdentitySubsystemDetail::FromUtf8(Value.Body);
+		Result.ContentType = HaivenIdentitySubsystemDetail::FromUtf8(Value.ContentType);
+		Result.ResponseSchema = HaivenIdentitySubsystemDetail::FromUtf8(Value.ResponseSchema);
 		Result.bNavigation = Value.bNavigation;
 		return Result;
 	}
@@ -80,8 +85,8 @@ void UHaivenSubsystem::ResetIdentity()
 			FString Context;
 			FString Error;
 			const bool bPrepared = WeakThis->IdentityBrowserAdapter->PrepareBrowserContext(Context, Error);
-			OutContext = ToUtf8(Context);
-			OutError = ToUtf8(Error);
+			OutContext = HaivenIdentitySubsystemDetail::ToUtf8(Context);
+			OutError = HaivenIdentitySubsystemDetail::ToUtf8(Error);
 			return bPrepared;
 		},
 		[WeakThis](const std::string& Context, const std::string& Url, std::string& OutError)
@@ -98,13 +103,13 @@ void UHaivenSubsystem::ResetIdentity()
 			}
 			FString Error;
 			const bool bPosted = WeakThis->IdentityBrowserAdapter->PostIdentityLink(
-				FromUtf8(Context), FromUtf8(Url), Error);
-			OutError = ToUtf8(Error);
+				HaivenIdentitySubsystemDetail::FromUtf8(Context), HaivenIdentitySubsystemDetail::FromUtf8(Url), Error);
+			OutError = HaivenIdentitySubsystemDetail::ToUtf8(Error);
 			return bPosted;
 		},
 		[WeakThis](const std::string& Context)
 		{
-			const FString UnrealContext = FromUtf8(Context);
+			const FString UnrealContext = HaivenIdentitySubsystemDetail::FromUtf8(Context);
 			if (!IsInGameThread())
 			{
 				AsyncTask(ENamedThreads::GameThread, [WeakThis, UnrealContext]()
@@ -171,8 +176,8 @@ bool UHaivenSubsystem::BeginIdentityLink(const FString& Provider, FString& Error
 		return false;
 	}
 	std::string CoreError;
-	const bool bStarted = Identity->BeginLink(ToUtf8(ClientOptions.BaseUrl), ToUtf8(Provider.ToLower()), CoreError);
-	Error = FromUtf8(CoreError);
+	const bool bStarted = Identity->BeginLink(HaivenIdentitySubsystemDetail::ToUtf8(ClientOptions.BaseUrl), HaivenIdentitySubsystemDetail::ToUtf8(Provider.ToLower()), CoreError);
+	Error = HaivenIdentitySubsystemDetail::FromUtf8(CoreError);
 	return bStarted;
 }
 
@@ -216,7 +221,7 @@ void UHaivenSubsystem::LoadMotd(const FString& IntegrationId)
 		return;
 	}
 	const Haiven::FIdentityReadTicket Ticket = Identity->BeginMotdRead();
-	const FHaivenRestRequest Operation = ToUnreal(Haiven::Rest::GetMotd(ToUtf8(IntegrationId)));
+	const FHaivenRestRequest Operation = ToUnreal(Haiven::Rest::GetMotd(HaivenIdentitySubsystemDetail::ToUtf8(IntegrationId)));
 	TWeakObjectPtr<UHaivenSubsystem> WeakThis(this);
 	RequestPublic(Operation.Method, Operation.Path, Operation.Body, FHaivenHttpComplete::CreateLambda(
 		[WeakThis, Ticket](const FHaivenHttpResult& Reply)
@@ -228,9 +233,9 @@ void UHaivenSubsystem::LoadMotd(const FString& IntegrationId)
 			bool bChanged = false;
 			std::string Error;
 			if (!WeakThis->Identity->CompleteMotdRead(
-				Ticket, Reply.StatusCode, ToUtf8(Reply.Body), bChanged, Error))
+				Ticket, Reply.StatusCode, HaivenIdentitySubsystemDetail::ToUtf8(Reply.Body), bChanged, Error))
 			{
-				WeakThis->BroadcastIdentityDiagnosticOnGameThread(FromUtf8(Error));
+				WeakThis->BroadcastIdentityDiagnosticOnGameThread(HaivenIdentitySubsystemDetail::FromUtf8(Error));
 				WeakThis->OnMotdLoadFailed.Broadcast();
 				return;
 			}
@@ -255,7 +260,7 @@ bool UHaivenSubsystem::DismissMotd()
 
 bool UHaivenSubsystem::IsValidMotdActionUrl(const FString& Url)
 {
-	return Haiven::FIdentityCore::IsValidMotdActionUrl(ToUtf8(Url));
+	return Haiven::FIdentityCore::IsValidMotdActionUrl(HaivenIdentitySubsystemDetail::ToUtf8(Url));
 }
 
 void UHaivenSubsystem::RefreshSignInMethods()
@@ -283,9 +288,9 @@ void UHaivenSubsystem::RefreshSignInMethods()
 			bool bChanged = false;
 			std::string Error;
 			if (!WeakThis->Identity->CompleteSignInMethodsRead(
-				Ticket, Reply.StatusCode, ToUtf8(Reply.Body), bChanged, Error))
+				Ticket, Reply.StatusCode, HaivenIdentitySubsystemDetail::ToUtf8(Reply.Body), bChanged, Error))
 			{
-				WeakThis->BroadcastIdentityDiagnosticOnGameThread(FromUtf8(Error));
+				WeakThis->BroadcastIdentityDiagnosticOnGameThread(HaivenIdentitySubsystemDetail::FromUtf8(Error));
 				return;
 			}
 			if (bChanged)
@@ -308,7 +313,7 @@ void UHaivenSubsystem::UnlinkIdentity(const FString& Provider)
 		else BroadcastIdentityDiagnosticOnGameThread(TEXT("Unlink Identity requires an initialized subsystem."));
 		return;
 	}
-	const std::string Normalized = ToUtf8(Provider.ToLower());
+	const std::string Normalized = HaivenIdentitySubsystemDetail::ToUtf8(Provider.ToLower());
 	if (!Haiven::FIdentityCore::IsProvider(Normalized))
 	{
 		BroadcastIdentityDiagnosticOnGameThread(TEXT("Identity provider must be google or apple."));
@@ -366,7 +371,7 @@ void UHaivenSubsystem::HandleIdentityRealtimeEvent(const Haiven::FServerFrame& F
 	if (Event.Kind == Haiven::EIdentityEventKind::Ignored) return;
 	if (!Event.bValid)
 	{
-		BroadcastIdentityDiagnosticOnGameThread(FromUtf8(Event.Error));
+		BroadcastIdentityDiagnosticOnGameThread(HaivenIdentitySubsystemDetail::FromUtf8(Event.Error));
 		return;
 	}
 	if (Event.Kind == Haiven::EIdentityEventKind::Motd && Event.bChanged)
@@ -378,11 +383,11 @@ void UHaivenSubsystem::HandleIdentityRealtimeEvent(const Haiven::FServerFrame& F
 	}
 	else if (Event.Kind == Haiven::EIdentityEventKind::Linked && Event.Linked)
 	{
-		OnIdentityLinked.Broadcast(FromUtf8(Event.Linked->Provider), FromUtf8(Event.Linked->Email));
+		OnIdentityLinked.Broadcast(HaivenIdentitySubsystemDetail::FromUtf8(Event.Linked->Provider), HaivenIdentitySubsystemDetail::FromUtf8(Event.Linked->Email));
 		RefreshSignInMethods();
 	}
 	else if (Event.Kind == Haiven::EIdentityEventKind::LinkFailed && Event.LinkFailed)
 	{
-		OnIdentityLinkFailed.Broadcast(FromUtf8(Event.LinkFailed->Provider), FromUtf8(Event.LinkFailed->Code));
+		OnIdentityLinkFailed.Broadcast(HaivenIdentitySubsystemDetail::FromUtf8(Event.LinkFailed->Provider), HaivenIdentitySubsystemDetail::FromUtf8(Event.LinkFailed->Code));
 	}
 }

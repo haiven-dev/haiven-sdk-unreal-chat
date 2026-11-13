@@ -1,8 +1,6 @@
 name: Build
 
-# Assemble-the-project tests. They need the public haiven-sdk-unreal checkout
-# for ci/engines.json only. Plugins/Haiven is the copy in this repository.
-# A v* tag runs the same tests and does not publish a release.
+# Assemble-the-project tests.
 on:
   pull_request:
   workflow_dispatch:
@@ -23,16 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          path: chat
-          persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: haiven-dev/haiven-sdk-unreal
-          ref: 45e84034e45e777c3fc8b36b4fce02d90adf2459
-          path: haiven-sdk-unreal
           persist-credentials: false
       - name: Test project assembly
-        working-directory: chat
-        env:
-          HAIVEN_SDK_UNREAL: ${{ github.workspace }}/haiven-sdk-unreal
         run: python3 test_prepare.py -v

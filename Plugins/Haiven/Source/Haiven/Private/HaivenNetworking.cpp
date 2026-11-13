@@ -8,6 +8,22 @@
 #include "Interfaces/IHttpResponse.h"
 #include "WebSocketsModule.h"
 
+// Named rather than anonymous: a unity build joins this file with the plugin's
+// others, and an anonymous helper of the same name there would collide.
+namespace HaivenNetworkingDetail
+{
+	std::string ToUtf8(const FString& Value)
+	{
+		FTCHARToUTF8 Converted(*Value);
+		return std::string(Converted.Get(), Converted.Length());
+	}
+
+	FString FromUtf8(const std::string& Value)
+	{
+		return FString(UTF8_TO_TCHAR(Value.c_str()));
+	}
+}
+
 namespace
 {
 	template <typename F>
@@ -23,22 +39,11 @@ namespace
 		}
 	}
 
-	std::string ToUtf8(const FString& Value)
-	{
-		FTCHARToUTF8 Converted(*Value);
-		return std::string(Converted.Get(), Converted.Length());
-	}
-
-	FString FromUtf8(const std::string& Value)
-	{
-		return FString(UTF8_TO_TCHAR(Value.c_str()));
-	}
-
 	/// The C++ SDK's parser (`HaivenFrames.h`): the one the conformance runners
 	/// prove, so this plugin and every C++ host read the wire the same way.
 	bool ParseServerFrame(const FString& Json, Haiven::FServerFrame& OutFrame)
 	{
-		return Haiven::ParseServerFrame(ToUtf8(Json), OutFrame);
+		return Haiven::ParseServerFrame(HaivenNetworkingDetail::ToUtf8(Json), OutFrame);
 	}
 
 	FHaivenRealtimeReply FailedRealtimeReply(const FString& Error)
@@ -109,6 +114,7 @@ void UHaivenSubsystem::SetAccessToken(const FString& AccessToken, FDateTime Expi
 	HostAccessToken = AccessToken;
 	HostAccessTokenExpiry = ExpiresAtUtc;
 	InvalidateCredentialBoundary();
+	SubmitSavedRewardClaims();
 }
 
 void UHaivenSubsystem::RefreshAccessToken(const FString& AccessToken, FDateTime ExpiresAtUtc)
@@ -248,6 +254,14 @@ void UHaivenSubsystem::CompleteHttpRequest(
 	FPendingHttp PendingRequest;
 	if (!HttpRequests.RemoveAndCopyValue(Handle, PendingRequest)) return;
 	if (!Result.bSucceeded) RecordFailure(EHaivenHealthArea::Http, Result.Error);
+	if (PendingRequest.bAuthenticated
+		&& Haiven::FCredentialLifecycle::ForHttpStatus(Result.StatusCode) == Haiven::ECredentialAction::Clear)
+	{
+		ClearRejectedCredential();
+		// Handoff credentials have no web refresh path. Hosts use the same finite
+		// expiry signal as realtime to start a new handoff after the bearer is gone.
+		OnAuthExpired.Broadcast();
+	}
 	PendingRequest.Completion.ExecuteIfBound(Result);
 }
 
@@ -305,6 +319,8 @@ void UHaivenSubsystem::CancelHttpRequest(FGuid RequestHandle)
 
 void UHaivenSubsystem::ConnectRealtime(FHaivenConnectComplete Completion)
 {
+	// The game's own connect supersedes a scheduled reconnect.
+	CancelRealtimeReconnect();
 	if (bRealtimeTeardown)
 	{
 		bRealtimeConnectDeferred = true;
@@ -334,6 +350,7 @@ void UHaivenSubsystem::ConnectRealtime(FHaivenConnectComplete Completion)
 		return;
 	}
 
+	bRealtimeAuthRefused = false;
 	const uint64 Generation = ++RealtimeGeneration;
 	TWeakObjectPtr<UHaivenSubsystem> WeakThis(this);
 	RealtimeSession = MakeUnique<Haiven::FSessionCore>(
@@ -348,9 +365,9 @@ void UHaivenSubsystem::ConnectRealtime(FHaivenConnectComplete Completion)
 		{
 			if (!WeakThis.IsValid()) return std::string();
 			FString CurrentToken;
-			return WeakThis->GetAccessToken(CurrentToken) ? ToUtf8(CurrentToken) : std::string();
+			return WeakThis->GetAccessToken(CurrentToken) ? HaivenNetworkingDetail::ToUtf8(CurrentToken) : std::string();
 		},
-		[]() { return ToUtf8(FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower)); });
+		[]() { return HaivenNetworkingDetail::ToUtf8(FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower)); });
 
 	BindRealtimeSession();
 
@@ -395,6 +412,9 @@ void UHaivenSubsystem::BindRealtimeSession()
 {
 	check(RealtimeSession);
 	TWeakObjectPtr<UHaivenSubsystem> WeakThis(this);
+	// The generation this session was bound under. A callback that runs after a
+	// later connect replaced the session must not change the replacement's state.
+	const uint64 Generation = RealtimeGeneration;
 	RealtimeSession->OnStateChanged = [WeakThis](Haiven::ESessionState State)
 	{
 		if (!WeakThis.IsValid()) return;
@@ -406,6 +426,7 @@ void UHaivenSubsystem::BindRealtimeSession()
 			break;
 		case Haiven::ESessionState::Ready:
 			++WeakThis->RealtimeReadyCount;
+			WeakThis->RealtimeReconnectAttempt = 0;
 			WeakThis->SetRealtimeState(EHaivenRealtimeState::Ready);
 			WeakThis->CompleteConnect(true, FString());
 			break;
@@ -419,9 +440,9 @@ void UHaivenSubsystem::BindRealtimeSession()
 	RealtimeSession->OnFrame = [WeakThis](const Haiven::FServerFrame& Frame, const std::string& Json)
 	{
 		if (!WeakThis.IsValid()) return;
-		const FString Type = FromUtf8(Frame.Type);
+		const FString Type = HaivenNetworkingDetail::FromUtf8(Frame.Type);
 		WeakThis->RecordRealtimeFrame(EHaivenRealtimeFrameDirection::Received, Type);
-		WeakThis->OnRealtimeFrame.Broadcast(Type, FromUtf8(Json));
+		WeakThis->OnRealtimeFrame.Broadcast(Type, HaivenNetworkingDetail::FromUtf8(Json));
 	};
 	RealtimeSession->OnReply = [WeakThis](const Haiven::FServerFrame& Frame, const std::string& Json)
 	{
@@ -439,7 +460,7 @@ void UHaivenSubsystem::BindRealtimeSession()
 			// Domain state is applied before the raw event reaches gameplay. That also
 			// invalidates any older REST snapshot so it cannot overwrite this event.
 			WeakThis->HandleIdentityRealtimeEvent(Frame, Json);
-			WeakThis->OnRealtimeEvent.Broadcast(FromUtf8(Frame.Type), FromUtf8(Json));
+			WeakThis->OnRealtimeEvent.Broadcast(HaivenNetworkingDetail::FromUtf8(Frame.Type), HaivenNetworkingDetail::FromUtf8(Json));
 		});
 	};
 	RealtimeSession->OnExpired = [WeakThis]()
@@ -448,19 +469,44 @@ void UHaivenSubsystem::BindRealtimeSession()
 		UE_LOG(LogHaiven, Log, TEXT("Realtime credential expired; re-authenticating on the same socket."));
 		WeakThis->OnAuthExpired.Broadcast();
 	};
-	RealtimeSession->OnAuthenticationFailed = [WeakThis](const std::string& Code)
+	RealtimeSession->OnAuthenticationFailed = [WeakThis, Generation](const std::string& Code)
 	{
-		// The re-auth credential was refused, so the session will not recover by
-		// itself; the game has to sign in again.
+		// The same-socket re-auth was refused, so this socket will not recover.
+		// The failure is always reported. For invalid_token and unauthorized the
+		// session core has already raised RetryFreshSocket, whose handler below
+		// replaced this session with a fresh one before this callback runs. That
+		// fresh first-frame handshake decides: 1008 unauthorized clears the
+		// credential, while 1013 auth_unavailable or a later ordinary drop keeps
+		// it and reconnects. Only a refusal for the current session, with no
+		// fresh-socket retry under way, stops automatic reconnects.
 		if (!WeakThis.IsValid()) return;
-		const FString Error = TEXT("auth.failure: ") + FromUtf8(Code);
+		if (WeakThis->RealtimeGeneration == Generation) WeakThis->bRealtimeAuthRefused = true;
+		const FString Error = TEXT("auth.failure: ") + HaivenNetworkingDetail::FromUtf8(Code);
 		WeakThis->RecordFailure(EHaivenHealthArea::Realtime, Error);
 		WeakThis->OnRealtimeError.Broadcast(Error);
+	};
+	RealtimeSession->OnCredentialActionRequired = [WeakThis](Haiven::ECredentialAction Action)
+	{
+		if (!WeakThis.IsValid()) return;
+		switch (Action)
+		{
+		case Haiven::ECredentialAction::Clear:
+			WeakThis->ClearRejectedCredential();
+			break;
+		case Haiven::ECredentialAction::RetryFreshSocket:
+			// A live auth.failure only rejects same-socket replacement. Retry the
+			// same bearer as first-frame auth; that handshake can authoritatively
+			// reject it with 1008 unauthorized.
+			WeakThis->ConnectRealtime();
+			break;
+		default:
+			break;
+		}
 	};
 	RealtimeSession->OnClosed = [WeakThis](int Code, const std::string& Reason)
 	{
 		if (!WeakThis.IsValid()) return;
-		const FString UnrealReason = FromUtf8(Reason);
+		const FString UnrealReason = HaivenNetworkingDetail::FromUtf8(Reason);
 		if (WeakThis->Chat) WeakThis->Chat->HandleClosed();
 		WeakThis->FailRealtimeRequests(UnrealReason.IsEmpty() ? TEXT("realtime socket closed") : UnrealReason);
 		WeakThis->CompleteConnect(false, UnrealReason);
@@ -483,6 +529,8 @@ TFuture<bool> UHaivenSubsystem::ConnectRealtimeAsync()
 
 void UHaivenSubsystem::DisconnectRealtime()
 {
+	// Deliberate, as are Logout and an account change, which close through here.
+	CancelRealtimeReconnect();
 	if (bRealtimeTeardown) return;
 	{
 		TGuardValue<bool> TeardownGuard(bRealtimeTeardown, true);
@@ -554,6 +602,69 @@ void UHaivenSubsystem::RunDeferredRealtimeConnect()
 	ConnectRealtime(MoveTemp(Combined));
 }
 
+void UHaivenSubsystem::CancelRealtimeReconnect()
+{
+	++RealtimeConnectIntent;
+	if (RealtimeReconnectTicker.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(RealtimeReconnectTicker);
+		RealtimeReconnectTicker.Reset();
+	}
+	// The scheduled reconnect itself connects through ConnectRealtime and keeps
+	// its place in the backoff; anything the game asks for starts it over.
+	if (!bRealtimeReconnecting) RealtimeReconnectAttempt = 0;
+}
+
+void UHaivenSubsystem::ScheduleRealtimeReconnect(uint64 Intent, int32 Code, const FString& Reason)
+{
+	// A close callback connected, disconnected, logged out or replaced the account.
+	if (Intent != RealtimeConnectIntent) return;
+	if (!ClientOptions.bReconnectRealtime) return;
+	// The server refused this account: the credential (an auth.failure that asked
+	// for no fresh-socket retry), a revoked game credential, a parental-consent
+	// lock, or an unsupported protocol. A new socket would be refused the same way. A missed first-frame deadline is an
+	// abnormal transport close, not a policy close, and reaches the retry path.
+	if (bRealtimeAuthRefused) return;
+	if (Code == 1008) return;
+	FString Token;
+	if (!GetAccessToken(Token)) return;
+
+	const int32 Attempt = ++RealtimeReconnectAttempt;
+	RealtimeReconnectDelay = RealtimeReconnectDelaySeconds(
+		Attempt,
+		ClientOptions.RealtimeReconnectInitialDelaySeconds,
+		ClientOptions.RealtimeReconnectMaxDelaySeconds,
+		FMath::FRand());
+	UE_LOG(LogHaiven, Log, TEXT("Realtime closed unexpectedly; reconnecting in %.2f s (attempt %d)."),
+		RealtimeReconnectDelay, Attempt);
+	RealtimeReconnectTicker = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateWeakLambda(this, [this](float)
+		{
+			RealtimeReconnectTicker.Reset();
+			RunRealtimeReconnect();
+			return false;
+		}),
+		RealtimeReconnectDelay);
+}
+
+void UHaivenSubsystem::RunRealtimeReconnect()
+{
+	// A new session authenticates with whatever token is current now.
+	TGuardValue<bool> Reconnecting(bRealtimeReconnecting, true);
+	ConnectRealtime();
+}
+
+float UHaivenSubsystem::RealtimeReconnectDelaySeconds(int32 Attempt, float InitialSeconds, float MaxSeconds, float Jitter)
+{
+	const float Initial = FMath::Max(0.1f, InitialSeconds);
+	const float Max = FMath::Max(Initial, MaxSeconds);
+	float Step = Initial;
+	for (int32 Index = 1; Index < Attempt && Step < Max; ++Index) Step *= 2.0f;
+	Step = FMath::Min(Step, Max);
+	// Equal jitter: never immediate, and clients dropped together spread out.
+	return Step * (0.5f + 0.5f * FMath::Clamp(Jitter, 0.0f, 1.0f));
+}
+
 FString UHaivenSubsystem::SendRealtimeRequest(
 	const FString& Type,
 	const FString& PayloadJson,
@@ -587,8 +698,8 @@ FString UHaivenSubsystem::SendRealtimeRequest(
 	{
 		const std::optional<std::string> Payload = PayloadJson.IsEmpty()
 			? std::nullopt
-			: std::optional<std::string>(ToUtf8(PayloadJson));
-		const FString RequestId = FromUtf8(RealtimeSession->Send(ToUtf8(Type), Payload));
+			: std::optional<std::string>(HaivenNetworkingDetail::ToUtf8(PayloadJson));
+		const FString RequestId = HaivenNetworkingDetail::FromUtf8(RealtimeSession->Send(HaivenNetworkingDetail::ToUtf8(Type), Payload));
 		if (Completion.IsBound()) RealtimeRequests.Add(RequestId, MoveTemp(Completion));
 		return RequestId;
 	}
@@ -661,13 +772,14 @@ void UHaivenSubsystem::HandleSocketMessage(uint64 Generation, const FString& Jso
 		HandleSocketError(Generation, TEXT("Haiven received an invalid realtime JSON envelope."));
 		return;
 	}
-	RealtimeSession->Receive(Frame, ToUtf8(Json));
+	RealtimeSession->Receive(Frame, HaivenNetworkingDetail::ToUtf8(Json));
 }
 
 void UHaivenSubsystem::HandleSocketError(uint64 Generation, const FString& Error)
 {
 	if (Generation != RealtimeGeneration) return;
 	if (bRealtimeTeardown) return;
+	const uint64 Intent = RealtimeConnectIntent;
 	{
 		TGuardValue<bool> TeardownGuard(bRealtimeTeardown, true);
 		++RealtimeGeneration;
@@ -676,16 +788,18 @@ void UHaivenSubsystem::HandleSocketError(uint64 Generation, const FString& Error
 		++RealtimeDropCount;
 		RecordFailure(EHaivenHealthArea::Realtime, Error);
 		OnRealtimeError.Broadcast(Error);
-		if (Session) Session->Closed(1006, ToUtf8(Error));
+		if (Session) Session->Closed(1006, HaivenNetworkingDetail::ToUtf8(Error));
 		RetireRealtimeSession(MoveTemp(Session));
 		SetRealtimeState(EHaivenRealtimeState::Disconnected);
 	}
+	ScheduleRealtimeReconnect(Intent, 1006, Error);
 }
 
 void UHaivenSubsystem::HandleSocketClosed(uint64 Generation, int32 Code, const FString& Reason)
 {
 	if (Generation != RealtimeGeneration) return;
 	if (bRealtimeTeardown) return;
+	const uint64 Intent = RealtimeConnectIntent;
 	{
 		TGuardValue<bool> TeardownGuard(bRealtimeTeardown, true);
 		++RealtimeGeneration;
@@ -696,10 +810,11 @@ void UHaivenSubsystem::HandleSocketClosed(uint64 Generation, int32 Code, const F
 		LastCloseCode = Code;
 		LastCloseReason = Reason;
 		UE_LOG(LogHaiven, Log, TEXT("Realtime socket closed by the server: %d %s"), Code, *Reason);
-		if (Session) Session->Closed(Code, ToUtf8(Reason));
+		if (Session) Session->Closed(Code, HaivenNetworkingDetail::ToUtf8(Reason));
 		RetireRealtimeSession(MoveTemp(Session));
 		SetRealtimeState(EHaivenRealtimeState::Disconnected);
 	}
+	ScheduleRealtimeReconnect(Intent, Code, Reason);
 }
 
 void UHaivenSubsystem::WriteClientFrame(const Haiven::FClientFrame& Frame)
@@ -710,24 +825,24 @@ void UHaivenSubsystem::WriteClientFrame(const Haiven::FClientFrame& Frame)
 	std::string Json;
 	if (Haiven::SerializeClientFrame(Frame, Json))
 	{
-		RealtimeSocket->Send(FromUtf8(Json));
-		RecordRealtimeFrame(EHaivenRealtimeFrameDirection::Sent, FromUtf8(Frame.Type));
+		RealtimeSocket->Send(HaivenNetworkingDetail::FromUtf8(Json));
+		RecordRealtimeFrame(EHaivenRealtimeFrameDirection::Sent, HaivenNetworkingDetail::FromUtf8(Frame.Type));
 	}
 }
 
 void UHaivenSubsystem::HandleRealtimeReply(const Haiven::FServerFrame& Frame, const std::string& Json)
 {
 	if (!Frame.RequestId.has_value()) return;
-	const FString RequestId = FromUtf8(*Frame.RequestId);
+	const FString RequestId = HaivenNetworkingDetail::FromUtf8(*Frame.RequestId);
 	FHaivenRealtimeComplete Completion;
 	if (!RealtimeRequests.RemoveAndCopyValue(RequestId, Completion)) return;
 
 	FHaivenRealtimeReply Result;
 	Result.bSucceeded = Frame.Success.value_or(false);
-	Result.Type = FromUtf8(Frame.Type);
+	Result.Type = HaivenNetworkingDetail::FromUtf8(Frame.Type);
 	Result.RequestId = RequestId;
-	Result.Json = FromUtf8(Json);
-	if (Frame.Error.has_value()) Result.Error = FromUtf8(*Frame.Error);
+	Result.Json = HaivenNetworkingDetail::FromUtf8(Json);
+	if (Frame.Error.has_value()) Result.Error = HaivenNetworkingDetail::FromUtf8(*Frame.Error);
 	if (!Result.bSucceeded)
 	{
 		if (Result.Error.IsEmpty()) Result.Error = TEXT("Haiven realtime request failed.");
@@ -760,7 +875,7 @@ bool UHaivenSubsystem::ValidatePayload(const FString& PayloadJson, FString& Erro
 	if (PayloadJson.IsEmpty()) return true;
 	Haiven::FJson Payload;
 	std::string ParseError;
-	if (Haiven::FJson::Parse(ToUtf8(PayloadJson), Payload, ParseError)) return true;
+	if (Haiven::FJson::Parse(HaivenNetworkingDetail::ToUtf8(PayloadJson), Payload, ParseError)) return true;
 	Error = TEXT("Realtime payload must be valid JSON.");
 	return false;
 }

@@ -20,8 +20,8 @@ sample can be reviewed and merged as text.
 | Unreal Engine 5.8.2 | `unreal-5.8.2-clang20` | Plugin, starter, fixture, and panel automation |
 | Unreal Engine 5.6.1 | `unreal-5.6.1-clang18` | Plugin, starter, fixture, and panel automation |
 
-`prepare.py` reads those versions from a sibling `haiven-sdk-unreal` checkout,
-or from `HAIVEN_SDK_UNREAL` when that variable is set (`ci/engines.json`).
+`prepare.py` knows these versions and copies `Plugins/Haiven` from this
+repository. `HAIVEN_SDK_UNREAL` does not replace that plugin.
 
 ## Install and run
 
@@ -50,17 +50,15 @@ reconnect-resilient SDK outbox. Never put the access token in `DefaultGame.ini`.
 
 ## Verification
 
-Without Unreal installed, point `HAIVEN_SDK_UNREAL` at a `haiven-sdk-unreal`
-checkout when it is not the sibling directory, then:
+The assembly tests need no Unreal install:
 
 ```sh
 python3 test_prepare.py
 ```
 
 `.github/workflows/build.yml` runs that test on pull requests and on a `v*` tag.
-It checks out `haiven-sdk-unreal` at the commit named in the workflow. The
-plugin repository's own `python3 ci/run.py` is the editor build; it is not in
-this tree.
+The plugin repository's own `python3 ci/run.py` is the editor build; it is not
+in this tree.
 
 `Haiven.ChatStarter.Fixture` parses checked-in `chat.message` and `chat.typing`
 payloads into the generated typed contracts and covers every outbox result,
