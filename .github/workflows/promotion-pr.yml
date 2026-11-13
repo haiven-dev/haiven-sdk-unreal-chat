@@ -1,0 +1,61 @@
+name: Promotion PR
+
+# Keeps one open pull request that promotes sdk-dev into main. The
+# haiven-actions promotion-pr action opens it when none is open and otherwise
+# refreshes the commit list between its markers, leaving text written outside
+# them alone. It never merges, versions, tags, or releases.
+#
+# A push runs the workflow file on the branch it lands on, so pushes to sdk-dev
+# start this only after main is merged back into sdk-dev. Until then a push to
+# main or a manual dispatch from main refreshes the pull request.
+#
+# The token comes from the haiven-release GitHub App, so the promotion pull
+# request starts the pull_request checks. A pull request opened with
+# GITHUB_TOKEN would not. The head is sdk-dev itself, so the app only reads
+# contents and writes pull requests; it pushes no branch.
+on:
+  push:
+    branches: [sdk-dev, main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: promotion-pr-${{ github.repository }}-sdk-dev-main
+  cancel-in-progress: false
+
+jobs:
+  promotion-pr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Mint promotion token
+        id: promotion-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          app-id: ${{ vars.HAIVEN_RELEASE_APP_ID }}
+          private-key: ${{ secrets.HAIVEN_RELEASE_APP_PRIVATE_KEY }}
+          owner: haiven-dev
+          repositories: haiven-sdk-unreal-chat
+          permission-contents: read
+          permission-pull-requests: write
+
+      # The action fetches main and sdk-dev from origin with the job's
+      # read-only token, so checkout keeps its credentials.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: haiven-dev/haiven-actions/actions/promotion-pr@407d8e232ebd2b733db9f9ac2c88ae382fdce149 # main
+        with:
+          token: ${{ steps.promotion-token.outputs.token }}
+          source-branch: sdk-dev
+          target-branch: main
+          title: "chore: promote sdk-dev into main"
+          note: >-
+            Merge with a **merge commit**, not squash or rebase, so main holds
+            each commit and the next list starts where this one ends. After the
+            release, merge main back into sdk-dev with a merge commit. Do not
+            rebase or reset sdk-dev.
